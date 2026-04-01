@@ -1,0 +1,50 @@
+# Build artifacts
+target/
+build/
+*.jar
+*.war
+*.ear
+*.class
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Node modules
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Rust build
+target/
+
+# Large binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Git submodules that might be causing issues
+titan-edge-ai/
+titan-settlement-arbiter/
+titan-synthetic-data/
