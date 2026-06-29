@@ -3,7 +3,6 @@ package com.titan.titancorebanking.service;
 import com.titan.titancorebanking.model.Loan;
 import com.titan.titancorebanking.model.ScheduledTransaction;
 import com.titan.titancorebanking.repository.ScheduledTransactionRepository;
-import com.titan.titancorebanking.enums.TransactionType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,11 +40,13 @@ public class LoanRepaymentService {
         for (int i = 0; i < n; i++) {
             ScheduledTransaction payment = ScheduledTransaction.builder()
                 .fromAccountId(loan.getAccount().getId())
-                .toAccountId(loan.getAccount().getId()) // Bank receives payment (same account as placeholder)
+                .toAccountNumber(loan.getAccount().getAccountNumber())
                 .amount(monthlyPayment)
-                .transactionType(TransactionType.LOAN_REPAYMENT)
-                .scheduledDate(nextPaymentDate)
+                .frequency("MONTHLY")
                 .status("PENDING")
+                .startDate(LocalDateTime.now().plusMonths(1))
+                .scheduledDate(nextPaymentDate)
+                .createdAt(LocalDateTime.now())
                 .build();
             
             schedule.add(payment);
