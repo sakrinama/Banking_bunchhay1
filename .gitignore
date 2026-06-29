@@ -45,6 +45,5 @@ target/
 *.swo
 
 # Git submodules that might be causing issues
-titan-edge-ai/
 titan-settlement-arbiter/
 titan-synthetic-data/
