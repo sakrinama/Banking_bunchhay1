@@ -120,8 +120,14 @@ public class AccountService {
         if (!currentUser.isAccountNonLocked()) {
             throw new SecurityException("⛔ ACCOUNT LOCKED");
         }
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(PIN_LOCK_PREFIX + currentUsername))) {
-            throw new SecurityException("⏳ Too many wrong attempts.");
+        try {
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(PIN_LOCK_PREFIX + currentUsername))) {
+                throw new SecurityException("⏳ Too many wrong attempts.");
+            }
+        } catch (SecurityException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("⚠️ Redis unavailable for PIN lock check, skipping: {}", e.getMessage());
         }
         if (!passwordEncoder.matches(request.pin(), currentUser.getPin())) {
             handlePinFailure(currentUsername, currentUser);
@@ -190,13 +196,23 @@ public class AccountService {
 
     // ... (Helper methods: handlePinFailure, etc. នៅដដែល) ...
     private void handlePinFailure(String username, User user) {
-        String key = PIN_ATTEMPT_PREFIX + username;
-        Long attempts = redisTemplate.opsForValue().increment(key);
-        if (attempts != null && attempts == 1) redisTemplate.expire(key, Duration.ofDays(1));
-        if (attempts != null && attempts == 5) redisTemplate.opsForValue().set(PIN_LOCK_PREFIX + username, "LOCKED", Duration.ofMinutes(5));
-        if (attempts != null && attempts >= 7) { user.setAccountNonLocked(false); userRepository.save(user); redisTemplate.delete(key); }
+        try {
+            String key = PIN_ATTEMPT_PREFIX + username;
+            Long attempts = redisTemplate.opsForValue().increment(key);
+            if (attempts != null && attempts == 1) redisTemplate.expire(key, Duration.ofDays(1));
+            if (attempts != null && attempts == 5) redisTemplate.opsForValue().set(PIN_LOCK_PREFIX + username, "LOCKED", Duration.ofMinutes(5));
+            if (attempts != null && attempts >= 7) { user.setAccountNonLocked(false); userRepository.save(user); redisTemplate.delete(key); }
+        } catch (Exception e) {
+            log.warn("⚠️ Redis unavailable for PIN failure tracking: {}", e.getMessage());
+        }
     }
-    private void resetPinAttempts(String username) { redisTemplate.delete(PIN_ATTEMPT_PREFIX + username); }
+    private void resetPinAttempts(String username) {
+        try {
+            redisTemplate.delete(PIN_ATTEMPT_PREFIX + username);
+        } catch (Exception e) {
+            log.warn("⚠️ Redis unavailable for PIN reset: {}", e.getMessage());
+        }
+    }
 
     // Helper to keep code clean - add missing methods back if needed
     @Transactional(readOnly = true)

@@ -33,46 +33,30 @@ public class IdempotencyService {
         if (idempotencyKey == null || idempotencyKey.isEmpty()) {
             return Optional.empty();
         }
-        
-        // Build cache key matching interceptor format
-        String cacheKey = buildCacheKey(uri, idempotencyKey);
-        String cachedTransactionId = redisTemplate.opsForValue().get(cacheKey);
-        
-        if (cachedTransactionId != null) {
-            log.debug("✅ Idempotency cache hit: {}", idempotencyKey);
-            return transactionRepository.findByIdempotencyKey(idempotencyKey);
-        }
-        
-        // Check database
-        Optional<Transaction> transaction = transactionRepository.findByIdempotencyKey(idempotencyKey);
-        
-        if (transaction.isPresent()) {
-            // Cache for future requests
-            redisTemplate.opsForValue().set(
-                cacheKey, 
-                transaction.get().getId().toString(), 
-                IDEMPOTENCY_TTL
-            );
-            log.debug("📝 Cached idempotency key: {}", idempotencyKey);
-        }
-        
-        return transaction;
-    }
-    
-    /**
-     * Cache a transaction's idempotency key for fast duplicate detection.
-     * 
-     * ✅ FIX: Cache key format now matches IdempotencyInterceptor
-     */
-    public void cacheTransaction(String idempotencyKey, String uri, Transaction transaction) {
-        if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+
+        // Try Redis cache first, fall back to DB if Redis is down
+        try {
             String cacheKey = buildCacheKey(uri, idempotencyKey);
-            redisTemplate.opsForValue().set(
-                cacheKey, 
-                transaction.getId().toString(), 
-                IDEMPOTENCY_TTL
-            );
+            String cachedTransactionId = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedTransactionId != null) {
+                log.debug("✅ Idempotency cache hit: {}", idempotencyKey);
+                return transactionRepository.findByIdempotencyKey(idempotencyKey);
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Redis unavailable for idempotency check, using DB fallback: {}", e.getMessage());
+        }
+
+        return transactionRepository.findByIdempotencyKey(idempotencyKey);
+    }
+
+    public void cacheTransaction(String idempotencyKey, String uri, Transaction transaction) {
+        if (idempotencyKey == null || idempotencyKey.isEmpty()) return;
+        try {
+            String cacheKey = buildCacheKey(uri, idempotencyKey);
+            redisTemplate.opsForValue().set(cacheKey, transaction.getId().toString(), IDEMPOTENCY_TTL);
             log.debug("💾 Cached transaction with idempotency key: {}", idempotencyKey);
+        } catch (Exception e) {
+            log.warn("⚠️ Redis unavailable, skipping idempotency cache: {}", e.getMessage());
         }
     }
     

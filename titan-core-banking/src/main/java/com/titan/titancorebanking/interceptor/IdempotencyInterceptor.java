@@ -50,13 +50,19 @@ public class IdempotencyInterceptor extends OncePerRequestFilter {
         }
 
         String cacheKey = buildCacheKey(request, idempotencyKey);
-        String cached = redisTemplate.opsForValue().get(cacheKey);
-        if (cached != null) {
-            // Return 409 Conflict for duplicate requests
-            response.setStatus(HttpServletResponse.SC_CONFLICT);
-            response.setContentType("application/json");
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            response.getWriter().write("{\"error\":\"Duplicate request detected\",\"message\":\"Request with this Idempotency-Key has already been processed\"}");
+
+        try {
+            String cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                response.setStatus(HttpServletResponse.SC_CONFLICT);
+                response.setContentType("application/json");
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                response.getWriter().write("{\"error\":\"Duplicate request detected\",\"message\":\"Request with this Idempotency-Key has already been processed\"}");
+                return;
+            }
+        } catch (Exception e) {
+            logger.warn("Redis unavailable in IdempotencyInterceptor, skipping cache check: " + e.getMessage());
+            filterChain.doFilter(request, response);
             return;
         }
 
@@ -65,13 +71,14 @@ public class IdempotencyInterceptor extends OncePerRequestFilter {
 
         int status = wrappedResponse.getStatus();
         if (status >= 200 && status < 300) {
-            byte[] body = wrappedResponse.getContentAsByteArray();
-            CachedResponse payload = new CachedResponse(
-                    status,
-                    wrappedResponse.getContentType(),
-                    new String(body, StandardCharsets.UTF_8)
-            );
-            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(payload), IDEMPOTENCY_TTL);
+            try {
+                byte[] body = wrappedResponse.getContentAsByteArray();
+                CachedResponse payload = new CachedResponse(status, wrappedResponse.getContentType(),
+                        new String(body, StandardCharsets.UTF_8));
+                redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(payload), IDEMPOTENCY_TTL);
+            } catch (Exception e) {
+                logger.warn("Redis unavailable, skipping idempotency cache write: " + e.getMessage());
+            }
         }
 
         wrappedResponse.copyBodyToResponse();
