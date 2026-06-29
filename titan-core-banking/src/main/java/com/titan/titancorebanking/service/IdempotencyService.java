@@ -9,6 +9,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.util.Optional;
 
@@ -49,6 +51,7 @@ public class IdempotencyService {
         return transactionRepository.findByIdempotencyKey(idempotencyKey);
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void cacheTransaction(String idempotencyKey, String uri, Transaction transaction) {
         if (idempotencyKey == null || idempotencyKey.isEmpty()) return;
         try {

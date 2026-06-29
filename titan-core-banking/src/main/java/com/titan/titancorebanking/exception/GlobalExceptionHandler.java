@@ -1,6 +1,7 @@
 package com.titan.titancorebanking.exception;
 
 import com.titan.titancorebanking.dto.response.ErrorResponse;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -53,7 +54,20 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
-    // 🎯 3. ចាប់យក RuntimeException (Error ទូទៅ - Business Logic)
+    // 🎯 3. Redis connection — do not expose as business error
+    @ExceptionHandler(RedisConnectionFailureException.class)
+    public ResponseEntity<ErrorResponse> handleRedisDown(RedisConnectionFailureException ex, WebRequest request) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+                .error("Cache Unavailable")
+                .message("Cache service is temporarily unavailable. Please retry.")
+                .path(request.getDescription(false).replace("uri=", ""))
+                .build();
+        return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    // 🎯 4. ចាប់យក RuntimeException (Error ទូទៅ - Business Logic)
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex, WebRequest request) {
 
