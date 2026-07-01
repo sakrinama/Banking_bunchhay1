@@ -13,20 +13,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ─── Environment Variables ───────────────────────────────────────────────────
-# Port the gRPC server listens on
-GRPC_PORT = int(os.environ.get("GRPC_PORT", "50051"))
-
-# Max worker threads for the gRPC thread pool
+GRPC_PORT   = int(os.environ.get("GRPC_PORT",   "50051"))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "10"))
 
-# Risk thresholds (configurable without code changes)
-RISK_LOW_MAX_AMOUNT    = float(os.environ.get("RISK_LOW_MAX_AMOUNT",    "1000"))   # < this → LOW
-RISK_MEDIUM_MAX_AMOUNT = float(os.environ.get("RISK_MEDIUM_MAX_AMOUNT", "10000"))  # < this → MEDIUM, else HIGH
+# Risk thresholds
+RISK_LOW_MAX_AMOUNT    = float(os.environ.get("RISK_LOW_MAX_AMOUNT",    "1000"))    # < 1,000      → LOW    / ALLOW
+RISK_MEDIUM_MAX_AMOUNT = float(os.environ.get("RISK_MEDIUM_MAX_AMOUNT", "10000"))   # < 10,000     → MEDIUM / REVIEW
+RISK_HIGH_MAX_AMOUNT   = float(os.environ.get("RISK_HIGH_MAX_AMOUNT",   "100000"))  # < 100,000    → HIGH   / REVIEW
+                                                                                     # >= 100,000   → BLOCKED / BLOCK
 
 # Risk scores
-RISK_SCORE_LOW    = int(os.environ.get("RISK_SCORE_LOW",    "10"))
-RISK_SCORE_MEDIUM = int(os.environ.get("RISK_SCORE_MEDIUM", "50"))
-RISK_SCORE_HIGH   = int(os.environ.get("RISK_SCORE_HIGH",   "85"))
+RISK_SCORE_LOW     = int(os.environ.get("RISK_SCORE_LOW",     "10"))
+RISK_SCORE_MEDIUM  = int(os.environ.get("RISK_SCORE_MEDIUM",  "50"))
+RISK_SCORE_HIGH    = int(os.environ.get("RISK_SCORE_HIGH",    "85"))
+RISK_SCORE_BLOCKED = int(os.environ.get("RISK_SCORE_BLOCKED", "100"))
 
 # ─── Proto imports ───────────────────────────────────────────────────────────
 sys.path.append(os.path.join(os.path.dirname(__file__), 'protos'))
@@ -42,7 +42,7 @@ from grpc_health.v1 import health_pb2, health_pb2_grpc
 from grpc_health.v1.health import HealthServicer
 
 
-# ─── Service Implementation ───────────────────────────────────────────────────
+# ─── Service Implementation ──────────────────────────────────────────────────
 class RiskService(pb2_grpc.RiskEngineServiceServicer):
 
     def CheckRisk(self, request, context):
@@ -50,8 +50,13 @@ class RiskService(pb2_grpc.RiskEngineServiceServicer):
             if not self._validate_request(request, context):
                 return pb2.RiskCheckResponse()
 
-            logger.info(f"📡 Analyzing risk for User: {request.user_id}, Amount: {request.amount}")
+            logger.info(f"📡 Analyzing risk | User: {request.user_id} | Amount: ${request.amount:,.2f}")
+
             risk_score, risk_level, action = self._calculate_risk(request)
+
+            # Log the decision clearly
+            icon = "✅" if action == "ALLOW" else "⚠️" if action == "REVIEW" else "🚫"
+            logger.info(f"{icon} Decision | Score: {risk_score} | Level: {risk_level} | Action: {action}")
 
             return pb2.RiskCheckResponse(
                 risk_score=risk_score,
@@ -93,17 +98,35 @@ class RiskService(pb2_grpc.RiskEngineServiceServicer):
 
     def _calculate_risk(self, request):
         """
-        Rule-based risk scoring.
-        Thresholds are driven by env vars so they can be tuned at deploy time.
+        Risk scoring rules:
+
+        Amount               | Score | Level   | Action
+        ---------------------|-------|---------|--------
+        < $1,000             |  10   | LOW     | ALLOW
+        $1,000 – $9,999      |  50   | MEDIUM  | REVIEW
+        $10,000 – $99,999    |  85   | HIGH    | REVIEW
+        >= $100,000          | 100   | BLOCKED | BLOCK   ← transaction is rejected
+
+        All thresholds are configurable via environment variables.
         """
         amount = request.amount
 
         if amount < RISK_LOW_MAX_AMOUNT:
             return RISK_SCORE_LOW, "LOW", "ALLOW"
+
         elif amount < RISK_MEDIUM_MAX_AMOUNT:
             return RISK_SCORE_MEDIUM, "MEDIUM", "REVIEW"
-        else:
+
+        elif amount < RISK_HIGH_MAX_AMOUNT:
             return RISK_SCORE_HIGH, "HIGH", "REVIEW"
+
+        else:
+            # Amount >= $100,000 → BLOCK the transaction
+            logger.warning(
+                f"🚫 BLOCKED transaction | User: {request.user_id} | "
+                f"Amount: ${amount:,.2f} exceeds limit of ${RISK_HIGH_MAX_AMOUNT:,.2f}"
+            )
+            return RISK_SCORE_BLOCKED, "BLOCKED", "BLOCK"
 
 
 # ─── Server Bootstrap ─────────────────────────────────────────────────────────
@@ -121,12 +144,16 @@ def serve():
         listen_addr = f'[::]:{GRPC_PORT}'
         server.add_insecure_port(listen_addr)
 
-        logger.info(f"🤖 Titan AI Service starting on {listen_addr}")
-        logger.info(f"   MAX_WORKERS            = {MAX_WORKERS}")
-        logger.info(f"   RISK_LOW_MAX_AMOUNT    = {RISK_LOW_MAX_AMOUNT}")
-        logger.info(f"   RISK_MEDIUM_MAX_AMOUNT = {RISK_MEDIUM_MAX_AMOUNT}")
-        logger.info(f"   RISK_SCORE_LOW/MED/HIGH = {RISK_SCORE_LOW}/{RISK_SCORE_MEDIUM}/{RISK_SCORE_HIGH}")
-        logger.info("✅ Health check service enabled")
+        logger.info("=" * 55)
+        logger.info("🤖 Titan AI Risk Engine starting...")
+        logger.info(f"   Port        : {GRPC_PORT}")
+        logger.info(f"   Workers     : {MAX_WORKERS}")
+        logger.info("   Risk Rules  :")
+        logger.info(f"     < ${RISK_LOW_MAX_AMOUNT:>10,.0f}  → LOW     / ALLOW")
+        logger.info(f"     < ${RISK_MEDIUM_MAX_AMOUNT:>10,.0f}  → MEDIUM  / REVIEW")
+        logger.info(f"     < ${RISK_HIGH_MAX_AMOUNT:>10,.0f}  → HIGH    / REVIEW")
+        logger.info(f"    >= ${RISK_HIGH_MAX_AMOUNT:>10,.0f}  → BLOCKED / BLOCK ⛔")
+        logger.info("=" * 55)
 
         server.start()
         server.wait_for_termination()
