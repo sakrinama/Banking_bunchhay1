@@ -1,0 +1,86 @@
+services:
+  - type: web
+    name: titan-notifications-service
+    runtime: docker
+    dockerfilePath: ./titan-notifications-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+
+    envVars:
+      # ── Spring ────────────────────────────────────────────
+      - key: SPRING_PROFILES_ACTIVE
+        value: "render"
+
+      - key: JAVA_OPTS
+        value: "-Xmx400m -Xms200m"
+
+      # ── Database (auto-injected from Render managed Postgres) ──
+      - key: DB_HOST
+        fromDatabase:
+          name: titan-notifications-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: titan-notifications-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: titan-notifications-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: titan-notifications-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: titan-notifications-db
+          property: password
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: titan-notifications-db
+          property: connectionString
+
+      # ── Kafka (DISABLED on Render free tier) ─────────────
+      - key: SPRING_KAFKA_BOOTSTRAPSERVERS
+        value: "localhost:9092"
+      - key: KAFKA_ENABLED
+        value: "false"
+
+      # ── Redis (DISABLED on Render free tier) ─────────────
+      - key: REDIS_HOST
+        value: "localhost"
+      - key: REDIS_PORT
+        value: "6379"
+
+      # ── Email — SendGrid ──────────────────────────────────
+      # Get free API key at: https://sendgrid.com (100 emails/day free)
+      - key: SENDGRID_API_KEY
+        value: "REPLACE_WITH_YOUR_SENDGRID_API_KEY"
+
+      # ── SMS — Twilio (optional) ───────────────────────────
+      # Get free trial at: https://twilio.com
+      - key: TWILIO_ACCOUNT_SID
+        value: "REPLACE_WITH_YOUR_TWILIO_ACCOUNT_SID"
+      - key: TWILIO_AUTH_TOKEN
+        value: "REPLACE_WITH_YOUR_TWILIO_AUTH_TOKEN"
+      - key: TWILIO_FROM_NUMBER
+        value: "REPLACE_WITH_YOUR_TWILIO_PHONE_NUMBER"
+
+      # ── Vault (DISABLED) ─────────────────────────────────
+      - key: VAULT_ENABLED
+        value: "false"
+
+      # ── Notification settings ─────────────────────────────
+      - key: NOTIFICATION_EMAIL_ENABLED
+        value: "true"
+      - key: NOTIFICATION_TELEGRAM_ENABLED
+        value: "false"
+      - key: NOTIFICATION_HIGH_VALUE_THRESHOLD
+        value: "500.00"
+
+databases:
+  - name: titan-notifications-db
+    plan: free
+    databaseName: notificationsdb
+    user: notificationsuser
