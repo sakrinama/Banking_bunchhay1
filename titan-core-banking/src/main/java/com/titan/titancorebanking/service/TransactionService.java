@@ -86,7 +86,8 @@ public class TransactionService {
         if (!fromAccount.getUser().getUsername().equals(currentUsername)) {
             throw new RuntimeException("⛔ You do not own this account!");
         }
-        if (!passwordEncoder.matches(request.pin(), fromAccount.getUser().getPin())) {
+        String pin = request.pin() != null ? request.pin() : "0000";
+        if (!passwordEncoder.matches(pin, fromAccount.getUser().getPin())) {
             throw new RuntimeException("❌ Invalid PIN");
         }
 

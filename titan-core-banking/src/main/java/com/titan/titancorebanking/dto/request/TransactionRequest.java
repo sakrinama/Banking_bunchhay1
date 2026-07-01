@@ -8,7 +8,6 @@ import java.math.BigDecimal;
  * Automatically generates: constructor, getters, equals, hashCode, toString
  */
 public record TransactionRequest(
-    @NotBlank(message = "From account number is required")
     @Pattern(regexp = "^[0-9]{10,16}$", message = "Invalid account number format")
     String fromAccountNumber,
 
@@ -21,7 +20,6 @@ public record TransactionRequest(
     @Digits(integer = 10, fraction = 2, message = "Invalid amount format")
     BigDecimal amount,
 
-    @NotBlank(message = "PIN is required")
     @Size(min = 4, max = 6, message = "PIN must be 4-6 digits")
     @Pattern(regexp = "^[0-9]+$", message = "PIN must contain only digits")
     String pin,
