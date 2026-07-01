@@ -40,6 +40,8 @@ public class SecurityConfig {
                             "/swagger-resources/**",
                             "/webjars/**"
                         ).permitAll()
+                        // ✅ QR Payment endpoints (/api/v1/qr/**) are intentionally NOT
+                        // whitelisted here – they require a valid JWT token.
                         // Lock down everything else
                         .anyRequest().authenticated()
                 )
