@@ -3,7 +3,11 @@
 import grpc
 import warnings
 
-import risk_engine_pb2 as risk__engine__pb2
+# Fix: when running as a package (protos/), use relative-style import
+try:
+    from protos import risk_engine_pb2 as risk__engine__pb2
+except ImportError:
+    import risk_engine_pb2 as risk__engine__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
@@ -59,7 +63,8 @@ def add_RiskEngineServiceServicer_to_server(servicer, server):
                     response_serializer=risk__engine__pb2.RiskCheckResponse.SerializeToString,
             ),
     }
-    generic_handler = grpc.method_handlers_generic_handler(
+    # Fix: correct API is grpc.method_service_handler -> grpc.GenericMethodHandler (not method_handlers_generic_handler)
+    generic_handler = grpc.method_service_handler(
             'risk_engine.RiskEngineService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
     server.add_registered_method_handlers('risk_engine.RiskEngineService', rpc_method_handlers)

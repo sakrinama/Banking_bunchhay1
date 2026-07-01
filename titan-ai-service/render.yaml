@@ -1,0 +1,36 @@
+# ==========================================================
+# render.yaml - Titan AI Service (gRPC Risk Engine)
+#
+# This file lives at: titan-ai-service/render.yaml
+# But Render reads render.yaml from the REPO ROOT.
+#
+# So all paths here are relative to the REPO ROOT.
+# ==========================================================
+
+services:
+  - type: pserv
+    name: titan-ai-service
+    runtime: docker
+    dockerfilePath: ./titan-ai-service/Dockerfile
+    dockerContext: ./titan-ai-service
+    plan: free
+
+    envVars:
+      - key: GRPC_PORT
+        value: "50051"
+      - key: MAX_WORKERS
+        value: "10"
+      - key: LOG_LEVEL
+        value: "INFO"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: RISK_LOW_MAX_AMOUNT
+        value: "1000"
+      - key: RISK_MEDIUM_MAX_AMOUNT
+        value: "10000"
+      - key: RISK_SCORE_LOW
+        value: "10"
+      - key: RISK_SCORE_MEDIUM
+        value: "50"
+      - key: RISK_SCORE_HIGH
+        value: "85"
