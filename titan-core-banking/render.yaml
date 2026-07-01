@@ -33,28 +33,19 @@ services:
         fromDatabase:
           name: titan-core-db
           property: connectionString
-      - key: REDIS_HOST
-        fromService:
-          name: titan-core-redis
-          type: redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          name: titan-core-redis
-          type: redis
-          property: port
       - key: APP_JWT_SECRET
         generateValue: true
       - key: JAVA_OPTS
         value: "-Xmx400m -Xms200m"
+      # AI gRPC service - points to titan-ai-service Private Service internal hostname
+      # Only set these after you have deployed titan-ai-service on Render.
+      - key: AI_HOST
+        value: "titan-ai-service"
+      - key: AI_PORT
+        value: "50051"
 
 databases:
   - name: titan-core-db
     plan: free
     databaseName: titandb
     user: titanuser
-
-  - type: redis
-    name: titan-core-redis
-    plan: free
-    ipAllowList: []
