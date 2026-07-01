@@ -41,6 +41,7 @@ public class TransactionService {
     private final IdempotencyService idempotencyService;
     private final RiskEngineGrpcService riskEngineGrpcService;
     private final DeadMansSwitchService deadMansSwitchService;
+    private final DeviceTokenService deviceTokenService;
 
     // ==================================================================================
     // 💸 1. TRANSFER (SECURE ENTERPRISE LOGIC)
@@ -155,7 +156,15 @@ public class TransactionService {
 
             // ✅ FIX 3: Publish to outbox (SAME transaction!)
             eventPublisherService.publishTransactionCompletedEvent(tx);
-            
+
+            // 📲 Push notification to sender's device
+            String pushTitle = "Transfer Successful ✅";
+            String pushBody  = String.format("You sent $%.2f to account %s. Ref: %s",
+                    request.amount().doubleValue(),
+                    request.toAccountNumber(),
+                    tx.getIdempotencyKey() != null ? tx.getIdempotencyKey() : String.valueOf(tx.getId()));
+            deviceTokenService.pushToUser(fromAccount.getUser().getId(), pushTitle, pushBody);
+
             return tx;
 
         } catch (Exception e) {
