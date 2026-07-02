@@ -189,7 +189,7 @@ public class QrPaymentService {
                 .toAccount(payee)
                 .amount(paymentAmount)
                 .transactionType(TransactionType.PAYMENT)
-                .status(TransactionStatus.COMPLETED)
+                .status(TransactionStatus.SUCCESS)
                 .note("QR Payment – " + (qrPayment.getNote() != null ? qrPayment.getNote() : ""))
                 .timestamp(LocalDateTime.now())
                 .transactionReference("QR-" + qrPayment.getQrCode().substring(0, 8).toUpperCase())
