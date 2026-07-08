@@ -7,11 +7,18 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Map;
 
 /**
- * Transaction Completed Event
- * Mirror of the event published by Core Banking
+ * Mirror of TransactionCompletedEvent published by titan-core-banking.
+ *
+ * Core-banking publishes (EventPublisherService):
+ *   eventId, eventType, transactionId (String), timestamp (Instant),
+ *   correlationId, amount, currency, type, status,
+ *   sourceAccountNumber, targetAccountNumber, username, note, metadata
+ *
+ * @JsonIgnoreProperties(ignoreUnknown = true) means extra fields are safely ignored.
  */
 @Data
 @Builder
@@ -19,22 +26,63 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransactionCompletedEvent {
+
+    // ── Event metadata ────────────────────────────────────────────────────
     private String eventId;
     private String eventType;
     private String eventVersion;
-    private String timestamp;
+    private Instant timestamp;
     private String correlationId;
-    
-    // Transaction details
-    private Long transactionId;
-    private Long accountId;
+
+    // ── Transaction data — matches core-banking field names exactly ───────
+    private String transactionId;           // String (core-banking sends String.valueOf(tx.getId()))
     private BigDecimal amount;
     private String currency;
-    private String transactionType;
-    private String status;
-    private String description;
-    private Map<String, Object> metadata;
-    
-    // Task 7: i18n support
+    private String type;                    // "TRANSFER" / "DEPOSIT" / "WITHDRAWAL"
+    private String status;                  // "SUCCESS" / "FAILED" / "BLOCKED"
+
+    // ── Account info ──────────────────────────────────────────────────────
+    private String sourceAccountNumber;     // sender account
+    private String targetAccountNumber;     // receiver account
+    private String username;                // account owner username
+
+    // ── Optional ─────────────────────────────────────────────────────────
+    private String note;
     private String locale;
+    private Map<String, String> metadata;
+
+    // ── Convenience helpers for NotificationService ───────────────────────
+
+    /** Returns transactionId as Long for audit logging (null-safe) */
+    public Long getTransactionIdAsLong() {
+        try {
+            return transactionId != null ? Long.parseLong(transactionId) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the primary account identifier.
+     * Core-banking doesn't send accountId directly — derive from sourceAccountNumber.
+     */
+    public String getAccountIdentifier() {
+        return sourceAccountNumber != null ? sourceAccountNumber : targetAccountNumber;
+    }
+
+    /**
+     * Alias for NotificationService which calls event.getTransactionType()
+     * Core-banking field is "type" not "transactionType"
+     */
+    public String getTransactionType() {
+        return type;
+    }
+
+    /**
+     * Alias for NotificationService which calls event.getAccountId()
+     * Core-banking doesn't send accountId, return null safely
+     */
+    public Long getAccountId() {
+        return null;
+    }
 }
