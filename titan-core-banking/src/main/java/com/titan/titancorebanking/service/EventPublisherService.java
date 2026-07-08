@@ -52,7 +52,6 @@ public class EventPublisherService {
 
     private TransactionCompletedEvent buildTransactionCompletedEvent(Transaction tx) {
         // ✅ SMART ACCOUNT DETECTION
-        // Transaction អាចមាន fromAccount ឬ toAccount អាស្រ័យលើ Type
         Account primaryAccount = tx.getFromAccount() != null ? tx.getFromAccount() : tx.getToAccount();
 
         String username = (primaryAccount != null && primaryAccount.getUser() != null)
@@ -63,12 +62,21 @@ public class EventPublisherService {
                 ? primaryAccount.getCurrency().name()
                 : "USD";
 
-        // Get Correlation ID for Tracing
         String correlationId = MDC.get("correlationId") != null ? MDC.get("correlationId") : UUID.randomUUID().toString();
 
+        // ── Build metadata — include user contact info so notification service
+        //    can send to the real email/phone without needing a separate DB lookup
         Map<String, String> metadata = new HashMap<>();
         metadata.put("source", "titan-core-banking");
         metadata.put("channel", "mobile-app");
+
+        // Inject user email so NotificationService.resolveEmail() can use it
+        if (primaryAccount != null && primaryAccount.getUser() != null) {
+            String email = primaryAccount.getUser().getEmail();
+            if (email != null && !email.isBlank()) {
+                metadata.put("userEmail", email);
+            }
+        }
 
         return TransactionCompletedEvent.builder()
                 .eventId(UUID.randomUUID().toString())

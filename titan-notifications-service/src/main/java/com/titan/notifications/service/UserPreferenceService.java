@@ -4,6 +4,7 @@ import com.titan.notifications.model.UserPreference;
 import com.titan.notifications.repository.UserPreferenceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,12 @@ public class UserPreferenceService {
     public UserPreference getPreferences(String userId) {
         return repository.findById(userId)
                 .orElseGet(() -> createDefaultPreference(userId));
+    }
+
+    /** Persist a preference update and evict the cache so next read is fresh. */
+    @CacheEvict(value = "userPreferences", key = "#pref.userId")
+    public UserPreference save(UserPreference pref) {
+        return repository.save(pref);
     }
     
     public boolean canSendMarketing(String userId) {
@@ -40,8 +47,9 @@ public class UserPreferenceService {
         pref.setMarketingOptIn(true);
         pref.setTransactionAlertsEnabled(true);
         pref.setPreferredLocale("en");
-        pref.setSmsNumber("+1234567890");
-        pref.setEmail("user@example.com");
+        // Leave email/smsNumber blank — don't default to placeholder values
+        pref.setSmsNumber("");
+        pref.setEmail("");
         return pref;
     }
 }
