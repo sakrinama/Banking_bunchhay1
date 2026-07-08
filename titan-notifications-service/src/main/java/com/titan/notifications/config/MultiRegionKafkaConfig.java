@@ -4,6 +4,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -14,12 +15,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Kafka consumer configuration.
+ * Kafka consumer configuration — only loaded when kafka.enabled=true.
+ * When KAFKA_ENABLED=false (no Confluent Cloud), this entire config is skipped
+ * and the service uses HTTP transport instead (NotifyController).
  * Supports both:
  *   - Local dev:       PLAINTEXT (no credentials needed)
  *   - Confluent Cloud: SASL_SSL  (set KAFKA_SECURITY_PROTOCOL=SASL_SSL on Render)
  */
 @Configuration
+@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class MultiRegionKafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")

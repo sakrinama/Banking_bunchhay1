@@ -42,6 +42,7 @@ public class TransactionService {
     private final RiskEngineGrpcService riskEngineGrpcService;
     private final DeadMansSwitchService deadMansSwitchService;
     private final DeviceTokenService deviceTokenService;
+    private final NotificationService notificationService;
 
     // ==================================================================================
     // 💸 1. TRANSFER (SECURE ENTERPRISE LOGIC)
@@ -157,13 +158,16 @@ public class TransactionService {
             // ✅ FIX 3: Publish to outbox (SAME transaction!)
             eventPublisherService.publishTransactionCompletedEvent(tx);
 
-            // 📲 Push notification to sender's device
+            // 📲 Push notification to sender's device (APNs)
             String pushTitle = "Transfer Successful ✅";
             String pushBody  = String.format("You sent $%.2f to account %s. Ref: %s",
                     request.amount().doubleValue(),
                     request.toAccountNumber(),
                     tx.getIdempotencyKey() != null ? tx.getIdempotencyKey() : String.valueOf(tx.getId()));
             deviceTokenService.pushToUser(fromAccount.getUser().getId(), pushTitle, pushBody);
+
+            // 📧 HTTP notify → titan-notifications-service (no Kafka needed)
+            notificationService.notifyTransaction(tx);
 
             return tx;
 
@@ -217,6 +221,8 @@ public class TransactionService {
             }
 
             eventPublisherService.publishTransactionCompletedEvent(tx);
+            // 📧 HTTP notify → titan-notifications-service
+            notificationService.notifyTransaction(tx);
             return tx;
 
         } catch (Exception e) {
@@ -263,6 +269,8 @@ public class TransactionService {
         }
 
         eventPublisherService.publishTransactionCompletedEvent(tx);
+        // 📧 HTTP notify → titan-notifications-service
+        notificationService.notifyTransaction(tx);
         return tx;
     }
 

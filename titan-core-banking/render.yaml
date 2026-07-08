@@ -137,6 +137,11 @@ services:
         sync: false
         value: "0.0"
 
+      # ── NOTIFICATION SERVICE ─────────────────────────────────────────────────
+      # 📦 URL of titan-notifications-service on Render
+      - key: NOTIFICATION_SERVICE_URL
+        value: "https://banking-bunchhay1-2.onrender.com"
+
       # ── KAFKA (disabled on Render free tier) ────────────────────────────────
       # 📦 INPUT BOX — Kafka bootstrap servers (e.g. from Confluent Cloud)
       - key: KAFKA_BOOTSTRAP_SERVERS

@@ -77,7 +77,7 @@ services:
       - key: KAFKA_SASL_MECHANISM
         value: "PLAIN"
       - key: KAFKA_ENABLED
-        value: "true"
+        value: "false"
 
       # ── Core Banking URL ────────────────────────────────────────────────
       # URL of titan-core-banking on Render (used for REST calls)

@@ -2,6 +2,7 @@ package com.titan.notifications.consumer;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import java.util.Map;
 @Service
 @Slf4j
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "kafka.enabled", havingValue = "true", matchIfMissing = false)
 public class DlqConsumer {
     
     private final com.titan.notifications.strategy.ProviderStrategyService providerService;

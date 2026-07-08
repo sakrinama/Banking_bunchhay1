@@ -1,47 +1,97 @@
 package com.titan.titancorebanking.service;
 
-import com.titan.titancorebanking.dto.request.NotificationRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.titan.titancorebanking.model.Account;
+import com.titan.titancorebanking.model.Transaction;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Calls titan-notifications-service via HTTP REST after every transaction.
+ *
+ * This is the NO-KAFKA transport: core-banking → HTTP POST → notifications service.
+ * All calls are fire-and-forget (timeout 3 s) — a slow or down notification
+ * service NEVER blocks or rolls back a transaction.
+ *
+ * Endpoint: POST {NOTIFICATION_SERVICE_URL}/api/notify/transaction
+ */
 @Service
+@Slf4j
 public class NotificationService {
 
-    private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
     private final RestClient restClient;
-    private final String notificationUrl;
+    private final String notificationServiceUrl;
 
-    // Constructor Injection: ទាញយក URL ពី application.properties (Default: http://localhost:8081)
-    public NotificationService(RestClient.Builder builder,
-                               @Value("${notification.service.url:http://localhost:8081}") String notificationUrl) {
-        this.restClient = builder.build();
-        this.notificationUrl = notificationUrl;
+    public NotificationService(
+            RestClient.Builder builder,
+            @Value("${notification.service.url:https://banking-bunchhay1-2.onrender.com}") String notificationServiceUrl) {
+        this.restClient = builder
+                .requestInterceptor((req, body, execution) -> {
+                    req.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+                    return execution.execute(req, body);
+                })
+                .build();
+        this.notificationServiceUrl = notificationServiceUrl;
+        log.info("📡 NotificationService → {}", notificationServiceUrl);
     }
 
-    public void sendNotification(String userId, String message) {
-        // បង្កើតកញ្ចប់ទិន្នន័យ
-        NotificationRequest request = new NotificationRequest(userId, message);
+    /**
+     * Send notification for a completed transaction.
+     * Called by TransactionService after transfer/deposit/withdraw.
+     * Non-blocking: runs on a virtual thread, never throws to the caller.
+     */
+    public void notifyTransaction(Transaction tx) {
+        Thread.ofVirtual().name("notif-", 0).start(() -> {
+            try {
+                Map<String, Object> payload = buildPayload(tx);
+                restClient.post()
+                        .uri(notificationServiceUrl + "/api/notify/transaction")
+                        .body(payload)
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("✅ Notification sent for txId={}", tx.getId());
+            } catch (Exception e) {
+                // Never propagate — notification failure must NOT affect the transaction
+                log.warn("⚠️  Notification skipped for txId={}: {}", tx.getId(), e.getMessage());
+            }
+        });
+    }
 
-        logger.info("📢 Calling Golang Service on port 8081 for user: {}", userId);
+    // ── Build JSON payload matching TransactionNotificationRequest ────────────
+    private Map<String, Object> buildPayload(Transaction tx) {
+        Account primary = tx.getFromAccount() != null ? tx.getFromAccount() : tx.getToAccount();
 
-        try {
-            // ហៅទៅ Golang (Fire and Forget - ផ្ញើចោល មិនបាច់ចាំចម្លើយ)
-            restClient.post()
-                    .uri(notificationUrl + "/api/notify")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .toBodilessEntity(); // Void response
+        String username  = primary != null && primary.getUser() != null
+                ? primary.getUser().getUsername() : "SYSTEM";
+        String userEmail = primary != null && primary.getUser() != null
+                ? primary.getUser().getEmail() : null;
+        String currency  = primary != null ? primary.getCurrency().name() : "USD";
 
-            logger.info("✅ Notification Sent via Golang!");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("transactionId",       String.valueOf(tx.getId()));
+        payload.put("type",                tx.getTransactionType().name());
+        payload.put("status",              tx.getStatus().name());
+        payload.put("amount",              tx.getAmount());
+        payload.put("currency",            currency);
+        payload.put("username",            username);
+        payload.put("note",                tx.getNote());
+        payload.put("locale",              "en");
 
-        } catch (Exception e) {
-            // បើ Golang ដាច់ភ្លើង កុំឲ្យ Java គាំង! គ្រាន់តែ Log Error ទុក
-            logger.error("⚠️ Failed to send notification: {}", e.getMessage());
+        if (tx.getFromAccount() != null) {
+            payload.put("sourceAccountNumber", tx.getFromAccount().getAccountNumber());
         }
+        if (tx.getToAccount() != null) {
+            payload.put("targetAccountNumber", tx.getToAccount().getAccountNumber());
+        }
+        if (userEmail != null && !userEmail.isBlank()) {
+            payload.put("userEmail", userEmail);
+        }
+
+        return payload;
     }
 }
