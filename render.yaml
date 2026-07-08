@@ -210,7 +210,7 @@ services:
     name: titan-notifications-service
     runtime: docker
     dockerfilePath: ./titan-notifications-service/Dockerfile
-    dockerContext: ./titan-notifications-service
+    dockerContext: .
     plan: free
     healthCheckPath: /actuator/health
     envVars:
