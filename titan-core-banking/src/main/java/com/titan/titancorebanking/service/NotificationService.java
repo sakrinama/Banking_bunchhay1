@@ -62,6 +62,31 @@ public class NotificationService {
         });
     }
 
+    /**
+     * Send a simple notification by username and message text.
+     * Used by TransactionEventListener (Spring application events).
+     * Fire-and-forget — runs on a virtual thread.
+     */
+    public void sendNotification(String username, String message) {
+        Thread.ofVirtual().name("notif-simple-", 0).start(() -> {
+            try {
+                Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("username", username);
+                payload.put("message", message);
+                payload.put("locale", "en");
+
+                restClient.post()
+                        .uri(notificationServiceUrl + "/api/notify/message")
+                        .body(payload)
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("✅ Notification sent for user={}", username);
+            } catch (Exception e) {
+                log.warn("⚠️  Notification skipped for user={}: {}", username, e.getMessage());
+            }
+        });
+    }
+
     // ── Build JSON payload matching TransactionNotificationRequest ────────────
     private Map<String, Object> buildPayload(Transaction tx) {
         Account primary = tx.getFromAccount() != null ? tx.getFromAccount() : tx.getToAccount();
