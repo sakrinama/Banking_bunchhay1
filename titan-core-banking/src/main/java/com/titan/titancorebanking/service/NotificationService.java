@@ -91,49 +91,69 @@ public class NotificationService {
      * Send notification for the RECEIVER of a transfer (Account B).
      * Called by TransactionService after a successful transfer only.
      * Non-blocking: runs on a virtual thread, never throws to the caller.
+     *
+     * IMPORTANT: username and email MUST be extracted inside the @Transactional
+     * boundary (before calling this method) because Account.user is LAZY and
+     * the Hibernate session is closed by the time the virtual thread runs.
      */
     public void notifyTransactionReceiver(Transaction tx) {
-        // Only relevant for TRANSFER transactions that have both accounts
         if (tx.getToAccount() == null || tx.getFromAccount() == null) return;
+
+        // ── Extract all data NOW (inside the transaction / open session) ────────
+        Account receiver = tx.getToAccount();
+        Account sender   = tx.getFromAccount();
+
+        // Safely read user fields while the Hibernate session is still open
+        String receiverUsername = null;
+        String receiverEmail    = null;
+        try {
+            if (receiver.getUser() != null) {
+                receiverUsername = receiver.getUser().getUsername();
+                receiverEmail    = receiver.getUser().getEmail();
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Could not read receiver user (lazy load?): {}", e.getMessage());
+        }
+
+        // Fall back to account number so the audit record is still useful
+        final String finalUsername = (receiverUsername != null && !receiverUsername.isBlank())
+                ? receiverUsername : receiver.getAccountNumber();
+        final String finalEmail    = receiverEmail;
+        final String fromAcct      = sender.getAccountNumber();
+        final String toAcct        = receiver.getAccountNumber();
+        final String currency      = receiver.getCurrency().name();
+        final String txId          = String.valueOf(tx.getId()) + "-recv";
+        final String status        = tx.getStatus().name();
+        final double amount        = tx.getAmount().doubleValue();
+        final String note          = tx.getNote();
 
         Thread.ofVirtual().name("notif-recv-", 0).start(() -> {
             try {
-                Map<String, Object> payload = buildReceiverPayload(tx);
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("transactionId",       txId);
+                payload.put("type",                "TRANSFER_RECEIVED");
+                payload.put("status",              status);
+                payload.put("amount",              amount);
+                payload.put("currency",            currency);
+                payload.put("username",            finalUsername);   // ← Account B's username
+                payload.put("note",                note);
+                payload.put("locale",              "en");
+                payload.put("sourceAccountNumber", fromAcct);
+                payload.put("targetAccountNumber", toAcct);
+                if (finalEmail != null && !finalEmail.isBlank()) {
+                    payload.put("userEmail", finalEmail);
+                }
+
                 restClient.post()
                         .uri(notificationServiceUrl + "/api/notify/transaction")
                         .body(payload)
                         .retrieve()
                         .toBodilessEntity();
-                log.info("✅ Receiver notification sent for txId={}", tx.getId());
+                log.info("✅ Receiver notification sent for txId={}, receiver={}", txId, finalUsername);
             } catch (Exception e) {
-                log.warn("⚠️  Receiver notification skipped for txId={}: {}", tx.getId(), e.getMessage());
+                log.warn("⚠️  Receiver notification skipped for txId={}: {}", txId, e.getMessage());
             }
         });
-    }
-
-    // ── Build payload targeting Account B (receiver) ──────────────────────────
-    private Map<String, Object> buildReceiverPayload(Transaction tx) {
-        Account receiver = tx.getToAccount();
-
-        String username  = receiver.getUser() != null ? receiver.getUser().getUsername() : "SYSTEM";
-        String userEmail = receiver.getUser() != null ? receiver.getUser().getEmail()    : null;
-        String currency  = receiver.getCurrency().name();
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("transactionId",       String.valueOf(tx.getId()) + "-recv");
-        payload.put("type",                "TRANSFER_RECEIVED");   // distinct type for receiver
-        payload.put("status",              tx.getStatus().name());
-        payload.put("amount",              tx.getAmount());
-        payload.put("currency",            currency);
-        payload.put("username",            username);              // ← Account B's username
-        payload.put("note",                tx.getNote());
-        payload.put("locale",              "en");
-        payload.put("sourceAccountNumber", tx.getFromAccount().getAccountNumber());
-        payload.put("targetAccountNumber", receiver.getAccountNumber());
-        if (userEmail != null && !userEmail.isBlank()) {
-            payload.put("userEmail", userEmail);
-        }
-        return payload;
     }
 
     // ── Build JSON payload matching TransactionNotificationRequest ────────────
