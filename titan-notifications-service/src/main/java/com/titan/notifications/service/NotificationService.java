@@ -38,7 +38,8 @@ public class NotificationService {
         String locale = event.getLocale() != null ? event.getLocale() : preferenceService.getPreferredLocale(userId);
         boolean isHighValue = event.getAmount() != null && event.getAmount().compareTo(HIGH_VALUE_THRESHOLD) > 0;
         boolean isMarketing = "PROMOTION".equals(event.getTransactionType());
-        
+        boolean isReceiverSide = "TRANSFER_RECEIVED".equals(event.getTransactionType());
+
         if (isMarketing && !preferenceService.canSendMarketing(userId)) {
             log.info("🚫 User {} opted out of marketing, dropping event silently", userId);
             return;
@@ -59,7 +60,23 @@ public class NotificationService {
         // ── Task 1: Instant WebSocket push for real-time alerts ───────────────
         Map<String, Object> wsPayload = buildTemplateData(event);
         webSocketService.pushToUser(userId, "TRANSACTION_ALERT", wsPayload);
-        
+
+        // ── TRANSFER_RECEIVED: always write to audit immediately so iOS can poll it ──
+        // Do NOT defer receiver-side events to predictiveDelivery — Account B must
+        // see the notification the moment the next poll runs (every 15 s).
+        if (isReceiverSide) {
+            String receiverMessage = buildReceiverMessage(event);
+            auditService.logAttempt(
+                    String.valueOf(event.getTransactionId()), userId,
+                    "IN_APP", userId, receiverMessage,
+                    "internal", locale, true);
+            log.info("✅ TRANSFER_RECEIVED audit written immediately for userId={}", userId);
+            log.info("=".repeat(80));
+            log.info("✅ Notification processing completed for transaction: {}", event.getTransactionId());
+            log.info("=".repeat(80));
+            return;
+        }
+
         if (!rateLimiter.allowSms(userId)) {
             log.warn("🚫 SMS rate limit exceeded for user {}", userId);
             auditService.logRateLimited(String.valueOf(event.getTransactionId()), userId, "SMS", locale);
@@ -173,6 +190,15 @@ public class NotificationService {
                                     String recipientEmail, String recipientPhone) {
         Map<String, Object> data = buildTemplateData(event);
 
+        // Always write to audit immediately so iOS polling can detect it right away.
+        // Then also schedule the email/SMS for optimal delivery time.
+        String inAppMessage = (String) data.getOrDefault("messagePrefix",
+                "Transaction " + event.getTransactionId() + " processed.");
+        auditService.logAttempt(
+                String.valueOf(event.getTransactionId()), userId,
+                "IN_APP", userId, inAppMessage,
+                "internal", locale, false);
+
         // Task 3: Use AI to determine optimal delivery time (8 AM next day)
         long optimalTime = System.currentTimeMillis() + (8 * 3600 * 1000L);
 
@@ -184,6 +210,14 @@ public class NotificationService {
             String emailBody = templateService.renderEmail("transaction_alert", data, locale);
             predictiveDelivery.scheduleOptimalDelivery(userId, "EMAIL", recipientEmail, emailBody, optimalTime);
         }
+    }
+
+    // ── Build a human-readable message for Account B (receiver) ──────────────
+    private String buildReceiverMessage(TransactionCompletedEvent event) {
+        String amount   = event.getAmount()   != null ? event.getAmount().toPlainString() : "0";
+        String currency = event.getCurrency() != null ? event.getCurrency() : "USD";
+        String from     = event.getSourceAccountNumber() != null ? event.getSourceAccountNumber() : "another account";
+        return String.format("You received %s %s from account %s", currency, amount, from);
     }
     
     private Map<String, Object> buildTemplateData(TransactionCompletedEvent event) {
