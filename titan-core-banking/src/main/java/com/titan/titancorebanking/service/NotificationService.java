@@ -87,6 +87,55 @@ public class NotificationService {
         });
     }
 
+    /**
+     * Send notification for the RECEIVER of a transfer (Account B).
+     * Called by TransactionService after a successful transfer only.
+     * Non-blocking: runs on a virtual thread, never throws to the caller.
+     */
+    public void notifyTransactionReceiver(Transaction tx) {
+        // Only relevant for TRANSFER transactions that have both accounts
+        if (tx.getToAccount() == null || tx.getFromAccount() == null) return;
+
+        Thread.ofVirtual().name("notif-recv-", 0).start(() -> {
+            try {
+                Map<String, Object> payload = buildReceiverPayload(tx);
+                restClient.post()
+                        .uri(notificationServiceUrl + "/api/notify/transaction")
+                        .body(payload)
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("✅ Receiver notification sent for txId={}", tx.getId());
+            } catch (Exception e) {
+                log.warn("⚠️  Receiver notification skipped for txId={}: {}", tx.getId(), e.getMessage());
+            }
+        });
+    }
+
+    // ── Build payload targeting Account B (receiver) ──────────────────────────
+    private Map<String, Object> buildReceiverPayload(Transaction tx) {
+        Account receiver = tx.getToAccount();
+
+        String username  = receiver.getUser() != null ? receiver.getUser().getUsername() : "SYSTEM";
+        String userEmail = receiver.getUser() != null ? receiver.getUser().getEmail()    : null;
+        String currency  = receiver.getCurrency().name();
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("transactionId",       String.valueOf(tx.getId()) + "-recv");
+        payload.put("type",                "TRANSFER_RECEIVED");   // distinct type for receiver
+        payload.put("status",              tx.getStatus().name());
+        payload.put("amount",              tx.getAmount());
+        payload.put("currency",            currency);
+        payload.put("username",            username);              // ← Account B's username
+        payload.put("note",                tx.getNote());
+        payload.put("locale",              "en");
+        payload.put("sourceAccountNumber", tx.getFromAccount().getAccountNumber());
+        payload.put("targetAccountNumber", receiver.getAccountNumber());
+        if (userEmail != null && !userEmail.isBlank()) {
+            payload.put("userEmail", userEmail);
+        }
+        return payload;
+    }
+
     // ── Build JSON payload matching TransactionNotificationRequest ────────────
     private Map<String, Object> buildPayload(Transaction tx) {
         Account primary = tx.getFromAccount() != null ? tx.getFromAccount() : tx.getToAccount();

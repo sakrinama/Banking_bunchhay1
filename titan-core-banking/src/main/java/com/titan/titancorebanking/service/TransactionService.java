@@ -158,16 +158,27 @@ public class TransactionService {
             // ✅ FIX 3: Publish to outbox (SAME transaction!)
             eventPublisherService.publishTransactionCompletedEvent(tx);
 
-            // 📲 Push notification to sender's device (APNs)
-            String pushTitle = "Transfer Successful ✅";
-            String pushBody  = String.format("You sent $%.2f to account %s. Ref: %s",
+            // 📲 Push notification to sender (Account A)
+            String senderTitle = "Transfer Successful ✅";
+            String senderBody  = String.format("You sent $%.2f to account %s. Ref: %s",
                     request.amount().doubleValue(),
                     request.toAccountNumber(),
                     tx.getIdempotencyKey() != null ? tx.getIdempotencyKey() : String.valueOf(tx.getId()));
-            deviceTokenService.pushToUser(fromAccount.getUser().getId(), pushTitle, pushBody);
+            deviceTokenService.pushToUser(fromAccount.getUser().getId(), senderTitle, senderBody);
 
-            // 📧 HTTP notify → titan-notifications-service (no Kafka needed)
+            // 📲 Push notification to receiver (Account B)
+            String receiverTitle = "Money Received 💰";
+            String receiverBody  = String.format("You received $%.2f from account %s. Ref: %s",
+                    request.amount().doubleValue(),
+                    request.fromAccountNumber(),
+                    tx.getIdempotencyKey() != null ? tx.getIdempotencyKey() : String.valueOf(tx.getId()));
+            deviceTokenService.pushToUser(toAccount.getUser().getId(), receiverTitle, receiverBody);
+
+            // 📧 HTTP notify → titan-notifications-service (sender)
             notificationService.notifyTransaction(tx);
+
+            // 📧 HTTP notify → titan-notifications-service (receiver)
+            notificationService.notifyTransactionReceiver(tx);
 
             return tx;
 

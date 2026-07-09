@@ -198,6 +198,22 @@ public class NotificationService {
         data.put("sourceAccountNumber", event.getSourceAccountNumber());
         data.put("targetAccountNumber", event.getTargetAccountNumber());
         data.put("timestamp", java.time.LocalDateTime.now().format(FORMATTER));
+
+        // Receiver-side leg: produce a "You received" message instead of "You sent"
+        boolean isReceiverSide = "TRANSFER_RECEIVED".equals(event.getTransactionType());
+        if (isReceiverSide) {
+            data.put("messagePrefix", String.format("You received %s %s from account %s",
+                    event.getCurrency() != null ? event.getCurrency() : "",
+                    event.getAmount() != null ? event.getAmount().toPlainString() : "",
+                    event.getSourceAccountNumber() != null ? event.getSourceAccountNumber() : ""));
+        } else {
+            data.put("messagePrefix", String.format("Your %s of %s %s was %s",
+                    event.getTransactionType() != null ? event.getTransactionType().toLowerCase() : "transaction",
+                    event.getCurrency() != null ? event.getCurrency() : "",
+                    event.getAmount() != null ? event.getAmount().toPlainString() : "",
+                    event.getStatus() != null ? event.getStatus().toLowerCase() : "processed"));
+        }
+
         return data;
     }
 }

@@ -74,6 +74,10 @@ public class NotifyController {
 
     // ── Convert HTTP DTO → internal event model ───────────────────────────────
     private TransactionCompletedEvent toEvent(TransactionNotificationRequest req) {
+        // Normalise type: TRANSFER_RECEIVED is the receiver-side leg of a TRANSFER
+        // Keep it as-is — NotificationService will use it to craft the right message.
+        String type = req.getType() != null ? req.getType() : "TRANSFER";
+
         return TransactionCompletedEvent.builder()
                 .eventId(java.util.UUID.randomUUID().toString())
                 .eventType("TransactionCompleted")
@@ -82,7 +86,7 @@ public class NotifyController {
                 .timestamp(java.time.Instant.now())
                 .amount(req.getAmount())
                 .currency(req.getCurrency())
-                .type(req.getType())
+                .type(type)
                 .status(req.getStatus())
                 .sourceAccountNumber(req.getSourceAccountNumber())
                 .targetAccountNumber(req.getTargetAccountNumber())
